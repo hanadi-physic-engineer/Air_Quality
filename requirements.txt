@@ -5,3 +5,5 @@ seaborn
 scipy
 streamlit
 plotly
+openpyxl
+xlrd

@@ -2,10 +2,13 @@ import pandas as pd
 import plotly.colors as PC
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 # Judul aplikasi
 st.title("Air Quality Data Analysis")
+
+# Daftar URL untuk data
 urls = [
     'https://raw.githubusercontent.com/hanadi-physic-engineer/Air_Quality/main/PRSA_Data_Aotizhongxin_20130301-20170228.csv',
     'https://raw.githubusercontent.com/hanadi-physic-engineer/Air_Quality/main/PRSA_Data_Changping_20130301-20170228.csv',
@@ -21,15 +24,20 @@ urls = [
     'https://raw.githubusercontent.com/hanadi-physic-engineer/Air_Quality/main/PRSA_Data_Wanshouxigong_20130301-20170228.csv'
 ]
 
+# Fungsi untuk memuat data dengan cache
 @st.cache_data
 def load_data(urls):
     data_frames = [pd.read_csv(url, on_bad_lines='skip') for url in urls]
     data = pd.concat(data_frames, ignore_index=True)
     return data
 
+# Load data
 data = load_data(urls)
 
+# Konversi kolom 'datetime'
 data['datetime'] = pd.to_datetime(data[['year', 'month', 'day', 'hour']])
+
+# Fungsi untuk mengkategorikan kualitas udara
 def categorize_air_quality(pm25_value):
     if pm25_value <= 50:
         return "Good"
@@ -52,15 +60,18 @@ year = st.sidebar.multiselect('Select Year', options=data['year'].unique(), defa
 month = st.sidebar.slider('Select Month', 1, 12, (1, 12))
 hour_range = st.sidebar.slider('Select Hour Range', 0, 23, (0, 23))
 
+# Filter data
 filtered_data = data[(data['year'].isin(year)) & 
                      (data['month'] >= month[0]) & 
-                     (data['month'] <= month[1]) &
+                     (data['month'] <= month[1]) & 
                      (data['hour'] >= hour_range[0]) & 
                      (data['hour'] <= hour_range[1])]
 
+# Tampilkan contoh data
 st.subheader("Data Sample")
 st.write(filtered_data.head())
 
+# Plot: Air Quality Category Counts per Station
 st.subheader("Air Quality Category Counts per Station")
 station_category_counts = filtered_data.groupby(['station', 'Category']).size().unstack(fill_value=0)
 fig_station_bar = go.Figure()
@@ -82,6 +93,7 @@ fig_station_bar.update_layout(
 )
 st.plotly_chart(fig_station_bar)
 
+# Plot: Correlation Heatmap
 st.subheader("Correlation Heatmap")
 corr_matrix = filtered_data.corr(numeric_only=True)
 fig_heatmap = go.Figure(data=go.Heatmap(
@@ -94,6 +106,7 @@ fig_heatmap = go.Figure(data=go.Heatmap(
 fig_heatmap.update_layout(title="Correlation Heatmap")
 st.plotly_chart(fig_heatmap)
 
+# Plot: Distributions of Air Quality Parameters Over Time
 st.subheader("Distributions of Air Quality Parameters Over Time")
 parameters = ['PM2.5', 'PM10', 'TEMP', 'PRES', 'DEWP', 'RAIN']
 fig_param_grid = make_subplots(rows=3, cols=2, subplot_titles=parameters)

@@ -2,12 +2,10 @@ import pandas as pd
 import plotly.colors as PC
 import plotly.express as px
 import plotly.graph_objects as go
-
 import streamlit as st
 
 # Judul aplikasi
 st.title("Air Quality Data Analysis")
-# Daftar URL file CSV dari GitHub (gunakan link "raw" yang benar)
 urls = [
     'https://raw.githubusercontent.com/hanadi-physic-engineer/Air_Quality/main/PRSA_Data_Aotizhongxin_20130301-20170228.csv',
     'https://raw.githubusercontent.com/hanadi-physic-engineer/Air_Quality/main/PRSA_Data_Changping_20130301-20170228.csv',
@@ -23,19 +21,14 @@ urls = [
     'https://raw.githubusercontent.com/hanadi-physic-engineer/Air_Quality/main/PRSA_Data_Wanshouxigong_20130301-20170228.csv'
 ]
 
-# Fungsi untuk memuat dataset
 @st.cache_data
 def load_data(urls):
-    # Memuat setiap URL dan menggabungkan menjadi satu DataFrame
     data_frames = [pd.read_csv(url, on_bad_lines='skip') for url in urls]
     data = pd.concat(data_frames, ignore_index=True)
     return data
-# Memuat data dengan memberikan parameter `urls` ke fungsi load_data
+
 data = load_data(urls)
 
-
-
-# Buat kolom `datetime` dari kolom `year`, `month`, `date`, dan `hour`
 data['datetime'] = pd.to_datetime(data[['year', 'month', 'day', 'hour']])
 def categorize_air_quality(pm25_value):
     if pm25_value <= 50:
@@ -51,7 +44,6 @@ def categorize_air_quality(pm25_value):
     else:
         return "Hazardous"
 
-# Tambahkan kolom Category
 data['Category'] = data['PM2.5'].apply(categorize_air_quality)
 
 # Sidebar: Filter data
@@ -60,88 +52,63 @@ year = st.sidebar.multiselect('Select Year', options=data['year'].unique(), defa
 month = st.sidebar.slider('Select Month', 1, 12, (1, 12))
 hour_range = st.sidebar.slider('Select Hour Range', 0, 23, (0, 23))
 
-# Filter data berdasarkan pilihan di sidebar
 filtered_data = data[(data['year'].isin(year)) & 
                      (data['month'] >= month[0]) & 
                      (data['month'] <= month[1]) &
                      (data['hour'] >= hour_range[0]) & 
                      (data['hour'] <= hour_range[1])]
 
-# Tampilkan data
 st.subheader("Data Sample")
 st.write(filtered_data.head())
 
-# Tampilkan informasi dataset
-st.subheader("Dataset Info")
-st.text(filtered_data.info())
+st.subheader("Air Quality Category Counts per Station")
+station_category_counts = filtered_data.groupby(['station', 'Category']).size().unstack(fill_value=0)
+fig_station_bar = go.Figure()
 
-# Tampilkan deskripsi statistik
-st.subheader("Statistical Description")
-st.write(filtered_data.describe())
+for category in station_category_counts.columns:
+    fig_station_bar.add_trace(
+        go.Bar(
+            x=station_category_counts.index,
+            y=station_category_counts[category],
+            name=category
+        )
+    )
 
-# Define custom category order for air quality
-custom_category_order = [
-    "Good", "Moderate", "Unhealthy for Sensitive Groups",
-    "Unhealthy", "Very Unhealthy", "Hazardous"
-]
-
-# Filter untuk kategori kualitas udara
-st.sidebar.subheader("Air Quality Category Filter")
-selected_category = st.sidebar.selectbox('Select Category', ["Overall"] + custom_category_order)
-
-if selected_category != "Overall":
-    filtered_data = filtered_data[filtered_data['Category'] == selected_category]
-
-# Analisis Frekuensi Kategori Kualitas Udara
-st.subheader("Air Quality Category Frequency")
-category_counts = filtered_data['Category'].value_counts().reindex(custom_category_order, fill_value=0)
-fig_category = px.bar(category_counts, x=category_counts.index, y=category_counts.values,
-                      labels={'x': 'Air Quality Category', 'y': 'Frequency'},
-                      title="Air Quality Category Distribution")
-st.plotly_chart(fig_category)
-
-# Analisis Distribusi PM2.5
-st.subheader("PM2.5 Distribution")
-fig_pm25 = px.histogram(filtered_data, x='PM2.5', nbins=50,
-                        title="PM2.5 Concentration Distribution")
-st.plotly_chart(fig_pm25)
-
-# Grafik Garis PM2.5 Berdasarkan Waktu
-st.subheader("PM2.5 Levels Over Time")
-fig_pm25_time = px.line(filtered_data, x='datetime', y='PM2.5',
-                        title="PM2.5 Levels Over Time")
-st.plotly_chart(fig_pm25_time)
-
-# Analisis Korelasi Antara Parameter Cuaca dan PM2.5
-st.subheader("Correlation Between Weather Parameters and PM2.5")
-weather_parameters = ['TEMP', 'PRES', 'DEWP', 'RAIN', 'wd', 'WSPM']
-param1 = st.selectbox('Select Weather Parameter 1', weather_parameters, index=0)
-param2 = st.selectbox('Select Weather Parameter 2', weather_parameters, index=1)
-
-fig_scatter = px.scatter(filtered_data, x=param1, y=param2, color='Category',
-                         title=f"{param1} vs {param2} by Air Quality Category")
-st.plotly_chart(fig_scatter)
-
-# Visualisasi Polar Berdasarkan Arah Angin dan Kategori
-st.subheader("Wind Direction and Air Quality Category")
-wind_categories = filtered_data.groupby(['wd', 'Category']).size().reset_index(name='count')
-wind_categories['Category'] = pd.Categorical(wind_categories['Category'], categories=custom_category_order, ordered=True)
-wind_categories = wind_categories.sort_values(by=['Category', 'wd'])
-
-fig_polar = go.Figure()
-
-for category in custom_category_order:
-    category_data = wind_categories[wind_categories['Category'] == category]
-    fig_polar.add_trace(go.Barpolar(
-        r=category_data['count'],
-        theta=category_data['wd'],
-        name=category,
-        marker=dict(color=PC.qualitative.Set1[custom_category_order.index(category)])
-    ))
-
-fig_polar.update_layout(
-    title="Wind Direction Distribution by Air Quality Category",
-    polar=dict(radialaxis=dict(visible=True)),
-    barmode="stack"
+fig_station_bar.update_layout(
+    barmode='stack',
+    title="Air Quality Category Counts per Station",
+    xaxis_title="Station",
+    yaxis_title="Count"
 )
-st.plotly_chart(fig_polar)
+st.plotly_chart(fig_station_bar)
+
+st.subheader("Correlation Heatmap")
+corr_matrix = filtered_data.corr(numeric_only=True)
+fig_heatmap = go.Figure(data=go.Heatmap(
+    z=corr_matrix.values,
+    x=corr_matrix.columns,
+    y=corr_matrix.columns,
+    colorscale='RdBu',
+    zmin=-1, zmax=1
+))
+fig_heatmap.update_layout(title="Correlation Heatmap")
+st.plotly_chart(fig_heatmap)
+
+st.subheader("Distributions of Air Quality Parameters Over Time")
+parameters = ['PM2.5', 'PM10', 'TEMP', 'PRES', 'DEWP', 'RAIN']
+fig_param_grid = make_subplots(rows=3, cols=2, subplot_titles=parameters)
+
+for i, parameter in enumerate(parameters):
+    row = i // 2 + 1
+    col = i % 2 + 1
+    monthly_avg = filtered_data.groupby([filtered_data['datetime'].dt.to_period("M"), 'station'])[parameter].mean().unstack()
+    for station in monthly_avg.columns:
+        fig_param_grid.add_trace(
+            go.Scatter(x=monthly_avg.index.to_timestamp(), y=monthly_avg[station], mode='lines', name=station),
+            row=row, col=col
+        )
+    fig_param_grid.update_xaxes(title_text="Month", row=row, col=col)
+    fig_param_grid.update_yaxes(title_text=parameter, row=row, col=col)
+
+fig_param_grid.update_layout(title="Distributions of Air Quality Parameters Over Time", showlegend=True)
+st.plotly_chart(fig_param_grid)
